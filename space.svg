@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <!-- Hand-authored gradients: replace this file to swap the space backdrop. -->
+  <defs>
+    <radialGradient id="violet"><stop stop-color="#713cc5" stop-opacity=".65"/><stop offset="1" stop-color="#271440" stop-opacity="0"/></radialGradient>
+    <radialGradient id="blue"><stop stop-color="#145f9c" stop-opacity=".7"/><stop offset="1" stop-color="#092338" stop-opacity="0"/></radialGradient>
+    <radialGradient id="rose"><stop stop-color="#bc397c" stop-opacity=".4"/><stop offset="1" stop-color="#33112b" stop-opacity="0"/></radialGradient>
+    <radialGradient id="teal"><stop stop-color="#137e89" stop-opacity=".45"/><stop offset="1" stop-color="#092c38" stop-opacity="0"/></radialGradient>
+  </defs>
+  <path fill="#080e25" d="M0 0h1600v900H0z"/>
+  <ellipse cx="240" cy="130" rx="680" ry="460" fill="url(#violet)"/>
+  <ellipse cx="1360" cy="690" rx="760" ry="510" fill="url(#blue)"/>
+  <ellipse cx="1080" cy="40" rx="560" ry="340" fill="url(#rose)"/>
+  <ellipse cx="90" cy="860" rx="600" ry="380" fill="url(#teal)"/>
+  <ellipse cx="600" cy="220" rx="400" ry="160" fill="url(#rose)" transform="rotate(-28 600 220)"/>
+  <ellipse cx="1140" cy="620" rx="430" ry="140" fill="url(#violet)" transform="rotate(-28 1140 620)"/>
+</svg>

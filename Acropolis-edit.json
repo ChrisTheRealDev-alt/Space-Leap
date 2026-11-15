@@ -1,0 +1,12 @@
+{
+  "source_file": "D:\\Haven\\YANNI - “Acroyali & Standing In Motion” Live At The Acropolis 1993 ! 1080p Digitally Remastered HD!.mp3",
+  "source_sha256": "c8b9bde0fc3257da1b0bd0697988ebd145e043be484640e99a133cd643b8e90d",
+  "start_seconds": 118,
+  "fade_in_seconds": 5,
+  "fade_out_seconds": 6,
+  "output": "assets/audio/Acropolis-game.ogg",
+  "ffmpeg_filter": "afade=t=in:st=0:d=5,afade=t=out:st=390.2988:d=6",
+  "codec": "vorbis",
+  "quality": 5,
+  "note": "Earlier Acroyali-game.ogg came from the wrong supplied recording; retained unused. Felitsa retained unused. New source remains untouched."
+}

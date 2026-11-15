@@ -1,0 +1,12 @@
+Unmodified PNG copies from user-supplied updated_graphics.zip. main.tscn uses the new credit; its intro leads to menu_main.tscn using these logo/button assets. Source scripts were inspected, not copied/executed. Original archive preserved.
+{
+  "credit.png": "n/Add a heading (1).png",
+  "logo.png": "n/flamingtext_com-6538271039-removebg-preview.png",
+  "play.png": "n/flamingtext_com-1191309758.png",
+  "tutorial.png": "n/flamingtext_com-1112993209.png",
+  "quit.png": "n/flamingtext_com-1191309814.png",
+  "earth.png": "earth.png",
+  "mars.png": "mars.png",
+  "uranus.png": "uranus.png"
+}
+continue.png: user supplied codex-clipboard-dc8f5b74-978f-4aeb-bf11-2f0883045d58.png; unchanged original. White removed only by scene shader.
