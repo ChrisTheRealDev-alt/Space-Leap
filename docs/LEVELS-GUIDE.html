@@ -1,0 +1,639 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SolarLeap Learning — three levels explained</title><style>body{font:18px/1.65 system-ui;background:#eff2f8;color:#17223a;margin:0}main{max-width:960px;margin:auto;padding:40px 24px}section{background:white;padding:24px;margin:24px 0;border-radius:12px}h1,h2{line-height:1.2}pre{background:#10182d;color:#eaf0ff;padding:20px;overflow:auto;font:15px/1.6 Consolas,monospace}img{width:100%}td,th{text-align:left;padding:12px;border-bottom:1px solid #ccc}a{color:#2255bb}.action{background:#e4f5ec;padding:16px}</style><main><p><strong>Current version approved:</strong> Chris confirmed saving the Rajdhani font, current tutorial and -3 dB music/ducking revision after the F5 check. Earlier pending notes below are historical.</p><p><strong>Current background track:</strong> the corrected Acroyali &amp; Standing In Motion live recording now replaces Felitsa. The game edit starts at source 1:58, fades in for five seconds, and fades out over its final six seconds before looping. Earlier Felitsa sections explain the same playback and ducking system.</p><p><strong>Latest play check:</strong> Chris confirmed the music and effects sound good after the loud-music/automatic-ducking revision. Earlier listening-pending notes describe prior iterations.</p><h1>Your three-level campaign</h1><p>This is the current guide for <strong>SolarLeap Learning</strong>. The original game remains separate. The extra stages were approved by Chris: keep the four-planet first stage, then five planets with 85 energy and six with 70.</p><section><h2>1. Open and test it</h2><div class="action">Open <a href="../project.godot">project.godot</a> from this learning folder in Godot. Stop any previous run, reload changed files, then press <strong>F5</strong>. Choose Play. The upper right says Level 1 / 3.</div><p>Light every planet while hot. Choose <strong>Next Level</strong> after Levels 1 and 2. If energy runs out, <strong>Retry Level</strong> restarts that stage. R also restarts the current stage. Home pauses it; Continue returns you to the same stage or its waiting level-clear panel.</p><p>After Level 3, Play Again starts Level 1. Home now offers Play, not Continue.</p></section><section><h2>2. What changed and where</h2><table><tr><th>File</th><th>Purpose</th></tr><tr><td><a href="../scripts/game.gd">game.gd</a></td><td>Level data, loading/resetting levels, energy caps and Next Level/Retry/Play Again. 400 lines.</td></tr><tr><td><a href="../scripts/game_view.gd">game_view.gd</a></td><td>Existing grid, black hole, comet, hot ring and dotted preview drawing moved into the previously approved small helper.</td></tr><tr><td><a href="../scenes/game.tscn">game.tscn</a></td><td>The same one scene, with Venus and Mercury Sprite2D nodes and a LevelLabel.</td></tr><tr><td><a href="../assets/venus.png">venus.png</a> / <a href="../assets/mercury.png">mercury.png</a></td><td>Copies of the friend's existing art from the original game. No new generated art.</td></tr></table><p>The gravity, bounce, border pull, orbit assistance and preview simulation functions have not been retuned. More planets change the combined gravitational field naturally.</p></section><section><h2>3. A level is data, not another scene</h2><p><code>LEVELS</code> is an array: an ordered list. Each item is a dictionary: a bundle of named values. <code>name</code> is the HUD title, <code>start</code> is the comet spawn, <code>energy</code> is the starting budget and refill cap, and <code>slots</code> holds planet placements.</p><pre><code>const LEVELS: Array[Dictionary] = [
+	{&quot;name&quot;: &quot;First Light&quot;, &quot;start&quot;: Vector2(200, 200), &quot;energy&quot;: 100.0,
+	&quot;slots&quot;: [Vector3(400, 250, 60), Vector3(1450, 300, 80), Vector3(450, 800, 50), Vector3(1450, 800, 60)]},
+	{&quot;name&quot;: &quot;Slingshot&quot;, &quot;start&quot;: Vector2(168, 960), &quot;energy&quot;: 85.0,
+	&quot;slots&quot;: [Vector3(480, 264, 62.4), Vector3(720, 864, 62.4), Vector3(1344, 216, 76.8), Vector3(1560, 600, 57.6), Vector3(1248, 912, 62.4)]},
+	{&quot;name&quot;: &quot;Ring&quot;, &quot;start&quot;: Vector2(192, 540), &quot;energy&quot;: 70.0,
+	&quot;slots&quot;: [Vector3(600, 216, 57.6), Vector3(600, 864, 57.6), Vector3(1344, 216, 57.6), Vector3(1344, 864, 57.6), Vector3(960, 144, 48), Vector3(960, 948, 48)]}
+]
+</code></pre><p>In each <code>Vector3(x, y, radius)</code>, x moves right and y moves down. The third number is a radius, not depth: this remains a 2D game. A radius of 60 produces a 120-pixel-wide image. The first slot uses Earth, then Jupiter, Mars, Neptune, Venus and Mercury.</p><p>The first level keeps your layout. The other two adapt the existing Slingshot and Ring plan to 1920×1080 by multiplying its coordinates and radii by 2.4.</p></section><section><h2>4. Loading a level, slowly</h2><p><strong>CODE — already saved in game.gd. You do not need to paste it again.</strong></p><pre><code>func load_level(index: int) -&gt; void:
+	level_index = index
+	var level: Dictionary = LEVELS[index]
+	planets.clear()
+	for sprite in planet_sprites:
+		sprite.hide()
+	for slot_index in range(level[&quot;slots&quot;].size()):
+		var slot: Vector3 = level[&quot;slots&quot;][slot_index]
+		var sprite: Sprite2D = planet_sprites[slot_index]
+		sprite.position = Vector2(slot.x, slot.y)
+		sprite.scale = Vector2.ONE * slot.z * 2.0 / sprite.texture.get_size()
+		sprite.modulate = Color(0.25, 0.25, 0.25, 1.0)
+		planets.append({&quot;node&quot;: sprite, &quot;radius&quot;: slot.z, &quot;lit&quot;: false})
+	comet_position = level[&quot;start&quot;]
+	comet_velocity = Vector2.ZERO
+	drag_start = Vector2.ZERO
+	has_launched = false
+	hot_time = 0.0
+	energy_limit = level[&quot;energy&quot;]
+	energy = energy_limit
+	run_active = true
+	resume_screen = &quot;play&quot;
+	$EnergyLabel.text = &quot;Energy: %.1f / %d&quot; % [energy, int(energy_limit)]
+	$EnergyBar.max_value = energy_limit
+	$EnergyBar.value = energy
+	$PlanetsLabel.text = &quot;Planets: 0 / %d&quot; % planets.size()
+	$LevelLabel.text = &quot;Level %d / %d  ·  %s&quot; % [index + 1, LEVELS.size(), level[&quot;name&quot;]]
+	show_screen(&quot;play&quot;)</code></pre><table><tr><th>Code/group</th><th>Plain meaning</th></tr><tr><td>func load_level(index: int)</td><td>Define a function that receives a whole-number level index. Arrays start at zero, so 0 means Level 1.</td></tr><tr><td>level_index = index</td><td>Remember which stage is active so Retry knows where to return.</td></tr><tr><td>LEVELS[index]</td><td>Read that stage's dictionary.</td></tr><tr><td>planets.clear()</td><td>Empty the active physics list. This does not delete scene nodes or image files.</td></tr><tr><td>for sprite ... hide()</td><td>Hide all six reusable images before deciding which this stage uses.</td></tr><tr><td>for slot_index in range(...size())</td><td>Repeat once for each planet placement.</td></tr><tr><td>slot / sprite</td><td>Read this placement and select its corresponding image node.</td></tr><tr><td>sprite.position</td><td>Place the centre at the requested x and y.</td></tr><tr><td>sprite.scale</td><td>Divide the desired diameter by the image dimensions to calculate its scale.</td></tr><tr><td>sprite.modulate</td><td>Darken the planet to 25% brightness.</td></tr><tr><td>planets.append(...)</td><td>Add the node, collision radius and unlit flag to the list used by gravity, collisions and relighting.</td></tr><tr><td>comet_position through hot_time</td><td>Move to this level's starting point and clear motion, the old drag and heat.</td></tr><tr><td>energy_limit / energy</td><td>Read this level's budget and fill it. Relight refunds also stop at this limit.</td></tr><tr><td>run_active / resume_screen</td><td>A fresh unfinished level exists and Continue should return to gameplay.</td></tr><tr><td>Label / bar assignments</td><td>Immediately display the new budget, zero lit planets and the level title.</td></tr><tr><td>show_screen("play")</td><td>Show the active planets, dismiss menus and allow physics to run.</td></tr></table></section><section><h2>5. One button, three possible actions</h2><pre><code>func result_action() -&gt; void:
+	if screen == &quot;cleared&quot;:
+		load_level(level_index + 1)
+	elif screen == &quot;lost&quot;:
+		load_level(level_index)
+	elif screen == &quot;won&quot;:
+		start_run()</code></pre><p><code>if</code> tests the current screen. On <code>cleared</code>, add one to the level index and load it. <code>elif</code> means “otherwise, if”: on <code>lost</code>, reload the same index. On the final <code>won</code> screen, start a fresh campaign.</p><pre><code>func start_run() -&gt; void:
+	load_level(0)</code></pre><p>Fresh Play always loads index 0. Retry is deliberately different: it retains the current index.</p><img src="images/07-level-clear.png" alt="Level clear with Next Level and Home"></section><section><h2>6. Clearing a stage versus finishing the game</h2><pre><code>func show_result(won: bool) -&gt; void:
+	var more_levels: bool = won and level_index + 1 &lt; LEVELS.size()
+	run_active = more_levels
+	$GameOverPanel/Title.text = &quot;Level complete!&quot; if more_levels else (&quot;All planets lit!&quot; if won else &quot;Out of energy&quot;)
+	$GameOverPanel/Message.text = &quot;Ready for Level %d?&quot; % (level_index + 2) if more_levels else (&quot;You completed all three levels.&quot; if won else &quot;Try this level again with fresh energy.&quot;)
+	$GameOverPanel/Retry.text = &quot;Next Level&quot; if more_levels else (&quot;Play Again&quot; if won else &quot;Retry Level&quot;)
+	show_screen(&quot;cleared&quot; if more_levels else (&quot;won&quot; if won else &quot;lost&quot;))</code></pre><p><code>more_levels</code> is true only if all planets are lit and another level exists. The form <code>A if condition else B</code> chooses A when the condition is true and B otherwise. That selects the panel text and button label.</p><p>An intermediate clear keeps <code>run_active</code> true. Home remembers the <code>cleared</code> screen, so Continue still shows Next Level. A final win makes it false, so Home offers a fresh Play.</p></section><section><h2>7. The drawing helper</h2><pre><code>func _draw() -&gt; void:
+	GameView.draw_game(self)</code></pre><p><code>preload</code> near the top of game.gd loads the helper script. <code>self</code> means the current Game node. Godot calls Game's <code>_draw()</code>; the helper then uses that node's draw functions. It is not a new scene or a new moving object.</p><p>In <a href="../scripts/game_view.gd">game_view.gd</a>, <code>game.comet_position</code> reads Game's current comet position. <code>game.draw_circle(...)</code> draws on the same Game node as before. Keeping drawing here lets game.gd stay below 400 lines without changing the physics.</p></section><section><h2>8. The new layouts</h2><h3>Level 2 — five planets, 85 energy</h3><img src="images/08-level-two.png" alt="Five-planet Slingshot layout"><h3>Level 3 — six planets, 70 energy</h3><img src="images/09-level-three.png" alt="Six-planet Ring layout"></section><section><h2>9. What was tested</h2><p>Godot 4.7.2 import, smoke and shot-replay tests returned exit code 0. The smoke test covers actual GUI clicks, progression, per-level retry, budget/refund caps, hidden unused planets, Home/Continue and final Home/Play. Engine screenshots were inspected for both new stages and both result types.</p><p>The separate replay test fires recorded shots through the real input and physics functions. It cleared Levels 1, 2 and 3 with 72.4, 51.3 and 46.0 energy left. This proves at least one affordable route exists; it does not prove the difficulty feels right to a beginner. Chris confirmed the levels and buttons work. The newly added audio still needs a listening check.</p><pre><code>godot --headless --path &quot;D:\Haven\rekindle\SolarLeap-Learning\solar-leap-learning&quot; -s res://tests/smoke_test.gd
+godot --headless --path &quot;D:\Haven\rekindle\SolarLeap-Learning\solar-leap-learning&quot; -s res://tests/replay_routes.gd</code></pre><p><code>godot</code> stands for the installed Godot executable. <a href="../tests/winning_routes.json">winning_routes.json</a> stores the reproducible shot directions and timing; <a href="../tests/find_routes.gd">find_routes.gd</a> searches for them and is only a developer test, not part of gameplay.</p></section><section><h2>10. Current complete scripts</h2><details><summary>game.gd — current rules and level code</summary><pre><code>extends Node2D
+var comet_position: Vector2 = Vector2(200,200)
+var comet_velocity: Vector2 = Vector2.ZERO
+var drag_start: Vector2 = Vector2.ZERO
+var is_aiming: bool = false
+var gravity_strength: float = 1200000.0
+var has_launched: bool = false
+var hole_position: Vector2 = Vector2(960,540)
+var bounce_cooldown: float = 0.0
+var hot_time: float = 0.0
+var energy: float = 100.0
+var planets: Array[Dictionary] = []
+var screen: String = &quot;intro&quot;
+var run_active: bool = false
+const GameView = preload(&quot;res://scripts/game_view.gd&quot;)
+const LEVELS: Array[Dictionary] = [
+	{&quot;name&quot;: &quot;First Light&quot;, &quot;start&quot;: Vector2(200, 200), &quot;energy&quot;: 100.0,
+	&quot;slots&quot;: [Vector3(400, 250, 60), Vector3(1450, 300, 80), Vector3(450, 800, 50), Vector3(1450, 800, 60)]},
+	{&quot;name&quot;: &quot;Slingshot&quot;, &quot;start&quot;: Vector2(168, 960), &quot;energy&quot;: 85.0,
+	&quot;slots&quot;: [Vector3(480, 264, 62.4), Vector3(720, 864, 62.4), Vector3(1344, 216, 76.8), Vector3(1560, 600, 57.6), Vector3(1248, 912, 62.4)]},
+	{&quot;name&quot;: &quot;Ring&quot;, &quot;start&quot;: Vector2(192, 540), &quot;energy&quot;: 70.0,
+	&quot;slots&quot;: [Vector3(600, 216, 57.6), Vector3(600, 864, 57.6), Vector3(1344, 216, 57.6), Vector3(1344, 864, 57.6), Vector3(960, 144, 48), Vector3(960, 948, 48)]}
+]
+var level_index: int = 0
+var energy_limit: float = 100.0
+var resume_screen: String = &quot;play&quot;
+var planet_sprites: Array[Sprite2D] = []
+const MIN_SHOT_COST: float = 10.0 + 20.0 * 60.0 / 630.0
+
+func _ready() -&gt; void:
+	$Music.stream.loop = true
+	planet_sprites.assign([$Planet, $Jupiter, $Mars, $Neptune, $Venus, $Mercury])
+	$Space.centered = false
+	$Space.position = Vector2.ZERO
+	$Space.scale = Vector2(1920, 1080) / $Space.texture.get_size()
+	$EnergyLabel.position = Vector2(40, 30)
+	$EnergyLabel.add_theme_font_size_override(&quot;font_size&quot;, 32)
+	$EnergyBar.position = Vector2(40, 80)
+	$EnergyBar.size = Vector2(320, 24)
+	$EnergyBar.max_value = 100.0
+	$EnergyBar.show_percentage = false
+	$Menu/Play.pressed.connect(start_run)
+	$Menu/Continue.pressed.connect(continue_run)
+	$Menu/Tutorial.pressed.connect(GameView.open_tutorial.bind(self))
+	$Menu/Quit.pressed.connect(get_tree().quit)
+	GameView.setup_tutorial(self)
+	$Home.pressed.connect(show_screen.bind(&quot;menu&quot;))
+	$GameOverPanel/Retry.pressed.connect(result_action)
+	$GameOverPanel/Home.pressed.connect(show_screen.bind(&quot;menu&quot;))
+	$Intro/AnimationPlayer.animation_finished.connect(_on_intro_finished)
+	for button: BaseButton in find_children(&quot;*&quot;, &quot;BaseButton&quot;, true, false):
+		button.pressed.connect($ClickSound.play)
+	show_screen(&quot;intro&quot;)
+	$IntroSound.play()
+
+func _draw() -&gt; void:
+	GameView.draw_game(self)
+
+func _physics_process(delta: float) -&gt; void:
+	if screen != &quot;play&quot;:
+		return
+	if is_aiming and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		is_aiming = false
+	var was_hot: bool = hot_time &gt; 0.0
+	bounce_cooldown = maxf(0.0, bounce_cooldown - delta)
+	hot_time = maxf(hot_time - delta, 0.0)
+	if was_hot and hot_time == 0.0:
+		$CoolSound.play()
+	move_comet(delta)
+	if has_launched and bounce_cooldown == 0.0:
+		for planet in planets:
+			if comet_position.distance_to(planet[&quot;node&quot;].position) &lt;= planet[&quot;radius&quot;] + 20.1:
+				$BounceSound.play()
+				bounce_cooldown = 0.15
+				break
+
+	if has_launched and hot_time &gt; 0.0:
+		for planet in planets:
+			if planet[&quot;lit&quot;]:
+				continue
+
+			var planet_node: Sprite2D = planet[&quot;node&quot;]
+			var radius: float = planet[&quot;radius&quot;]
+			var distance: float = comet_position.distance_to(planet_node.position)
+
+			if distance &lt;= radius + 20.0 + 0.1:
+				$RelightSound.play()
+				planet[&quot;lit&quot;] = true
+				planet_node.modulate = Color.WHITE
+				energy = minf(energy + 15.0, energy_limit)
+	var lit_count: int = planets.filter(func(planet: Dictionary) -&gt; bool: return planet[&quot;lit&quot;]).size()
+	$PlanetsLabel.text = &quot;Planets: %d / %d&quot; % [lit_count, planets.size()]
+	if lit_count == planets.size():
+		show_result(true)
+	elif hot_time &lt;= 0.0 and energy + 0.000001 &lt; MIN_SHOT_COST:
+		show_result(false)
+	$EnergyLabel.text = &quot;Energy: %.1f / %d&quot; % [energy, int(energy_limit)]
+	$EnergyBar.value = energy
+	if is_aiming:
+		var shot_velocity: Vector2 = ((drag_start - get_local_mouse_position()) * 4.0).limit_length(630.0)
+
+		if shot_velocity.length() &gt;= 60.0:
+			var power: float = shot_velocity.length() / 630.0
+			var shot_cost: float = 10.0 + 20.0 * power
+			$EnergyLabel.text += &quot;   |   Shot cost: %.1f&quot; % shot_cost
+
+			if energy &lt; shot_cost:
+				$EnergyLabel.text += &quot;   Not enough energy&quot;
+		else:
+			$EnergyLabel.text += &quot;   |   Drag farther to shoot&quot;
+	queue_redraw()
+
+func preview_path(launch_velocity: Vector2) -&gt; PackedVector2Array:
+	var saved_position: Vector2 = comet_position
+	var saved_velocity: Vector2 = comet_velocity
+	var saved_launched: bool = has_launched
+
+	var points := PackedVector2Array()
+	var step: float = 1.0 / Engine.physics_ticks_per_second
+
+	comet_velocity = launch_velocity
+	has_launched = true
+
+	for dot_index in range(20):
+		for small_step in range(3):
+			move_comet(step)
+		points.append(comet_position)
+
+	comet_position = saved_position
+	comet_velocity = saved_velocity
+	has_launched = saved_launched
+
+	return points
+
+func move_comet(delta: float) -&gt; void:
+	if has_launched:
+		var nearest_distance: float = INF
+
+		for planet in planets:
+			var planet_node: Sprite2D = planet[&quot;node&quot;]
+			var radius: float = planet[&quot;radius&quot;]
+			var to_planet: Vector2 = planet_node.position - comet_position
+			var distance: float = to_planet.length()
+
+			nearest_distance = minf(nearest_distance, distance)
+
+			var size_factor: float = radius / 60.0
+			var strength: float = gravity_strength * size_factor * size_factor
+			var safe_distance: float = maxf(distance, 40.0)
+			var pull: float = strength / (safe_distance * safe_distance)
+
+			comet_velocity += to_planet.normalized() * pull * delta
+
+		var far_amount: float = clampf((nearest_distance - 200.0) / 200.0, 0.0, 1.0)
+		var slowdown: float = pow(0.5, delta * far_amount)
+		comet_velocity *= slowdown
+
+		var to_hole: Vector2 = hole_position - comet_position
+		var hole_distance: float = maxf(to_hole.length(), 60.0)
+		var hole_pull: float = minf(1600.0, 2000000.0 / (hole_distance * hole_distance))
+		comet_velocity += to_hole.normalized() * hole_pull * delta
+		var from_center: Vector2 = comet_position - hole_position
+		var edge_fraction: float = maxf(absf(from_center.x) / 960.0, absf(from_center.y) / 540.0)
+		var edge_depth: float = maxf((edge_fraction - 0.8) / 0.2, 0.0)
+		var outward: Vector2 = from_center.normalized()
+		var outward_speed: float = maxf(comet_velocity.dot(outward), 0.0)
+
+		var border_pull: float = edge_depth * (150.0 + outward_speed * 3.0)
+		border_pull += 700.0 * edge_depth * edge_depth
+		comet_velocity -= outward * minf(border_pull, 6000.0) * delta
+
+		comet_position += comet_velocity * delta
+		bounce_off_planet()
+		orbit_around_hole()
+		assist_planet_orbit(delta)
+
+func _unhandled_input(event: InputEvent) -&gt; void:
+	if screen == &quot;intro&quot;:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ESCAPE:
+			show_screen(&quot;menu&quot;)
+			return
+		if event.keycode == KEY_R and screen in [&quot;play&quot;, &quot;cleared&quot;, &quot;lost&quot;, &quot;won&quot;]:
+			load_level(level_index)
+			return
+	if screen != &quot;play&quot;:
+		return
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				drag_start = event.position
+				is_aiming = true
+			elif is_aiming:
+				is_aiming = false
+
+				var shot_velocity: Vector2 = ((drag_start - event.position) * 4.0).limit_length(630.0)
+
+				if shot_velocity.length() &lt; 60.0:
+					return
+
+				var power: float = shot_velocity.length() / 630.0
+				var cost: float = 10.0 + 20.0 * power
+
+				if energy &lt; cost:
+					$EnergyLabel.text = &quot;Not enough energy for this shot&quot;
+					return
+
+				$LaunchSound.play()
+				energy -= cost
+				comet_velocity = shot_velocity
+				has_launched = true
+				hot_time = 3.0
+
+func bounce_off_planet() -&gt; void:
+	for planet in planets:
+		var planet_node: Sprite2D = planet[&quot;node&quot;]
+		var radius: float = planet[&quot;radius&quot;]
+		var away: Vector2 = comet_position - planet_node.position
+		var contact_distance: float = radius + 20.0
+
+		if away.length() &lt; contact_distance:
+			var normal: Vector2 = away.normalized()
+
+			if away.length_squared() == 0.0:
+				normal = Vector2.RIGHT
+
+			comet_position = planet_node.position + normal * contact_distance
+
+			var inward_speed: float = comet_velocity.dot(normal)
+			if inward_speed &lt; 0.0:
+				comet_velocity -= 1.9 * inward_speed * normal
+
+func orbit_around_hole() -&gt; void:
+	var away: Vector2 = comet_position - hole_position
+	var safe_radius: float = 110.0
+
+	if away.length() &gt;= safe_radius:
+		return
+
+	var outward: Vector2 = away.normalized()
+	if away.length_squared() == 0.0:
+		outward = Vector2.RIGHT
+
+	var turn: float = 1.0
+	if away.cross(comet_velocity) &lt; 0.0:
+		turn = -1.0
+
+	comet_position = hole_position + outward * safe_radius
+
+	var sideways: Vector2 = Vector2(-outward.y, outward.x) * turn
+	var orbit_speed: float = clampf(comet_velocity.length(), 120.0, 220.0)
+	comet_velocity = sideways * orbit_speed
+
+func warp_point(point: Vector2) -&gt; Vector2:
+	var toward_hole: Vector2 = hole_position - point
+	var distance: float = toward_hole.length()
+	var bend: float = 168.0 * exp(-distance / 408.0)
+	bend = minf(bend, distance * 0.8)
+	return point + toward_hole.normalized() * bend
+
+func assist_planet_orbit(delta: float) -&gt; void:
+	if comet_velocity.length() &gt; 220.0:
+		return
+
+	for planet in planets:
+		var planet_node: Sprite2D = planet[&quot;node&quot;]
+		var radius: float = planet[&quot;radius&quot;]
+		var away: Vector2 = comet_position - planet_node.position
+		var distance: float = away.length()
+
+		if distance &lt; 1.0 or distance &gt; radius * 3.0:
+			continue
+
+		var outward: Vector2 = away.normalized()
+		var turn: float = 1.0
+		if away.cross(comet_velocity) &lt; 0.0:
+			turn = -1.0
+
+		var sideways: Vector2 = Vector2(-outward.y, outward.x) * turn
+
+		var size_factor: float = radius / 60.0
+		var strength: float = gravity_strength * size_factor * size_factor
+		var orbit_speed: float = clampf(sqrt(strength / distance), 70.0, 150.0)
+		var target_velocity: Vector2 = sideways * orbit_speed
+
+		if distance &lt; radius + 40.0:
+			target_velocity += outward * 60.0
+
+		comet_velocity = comet_velocity.lerp(target_velocity, minf(2.0 * delta, 1.0))
+		return
+
+func start_run() -&gt; void:
+	load_level(0)
+
+func load_level(index: int) -&gt; void:
+	for player: AudioStreamPlayer in [$LaunchSound, $RelightSound, $ClearSound, $LoseSound, $BounceSound, $CoolSound]:
+		player.stop()
+	bounce_cooldown = 0.0
+	level_index = index
+	var level: Dictionary = LEVELS[index]
+	planets.clear()
+	for sprite in planet_sprites:
+		sprite.hide()
+	for slot_index in range(level[&quot;slots&quot;].size()):
+		var slot: Vector3 = level[&quot;slots&quot;][slot_index]
+		var sprite: Sprite2D = planet_sprites[slot_index]
+		sprite.position = Vector2(slot.x, slot.y)
+		sprite.scale = Vector2.ONE * slot.z * 2.0 / sprite.texture.get_size()
+		sprite.modulate = Color(0.25, 0.25, 0.25, 1.0)
+		planets.append({&quot;node&quot;: sprite, &quot;radius&quot;: slot.z, &quot;lit&quot;: false})
+	comet_position = level[&quot;start&quot;]
+	comet_velocity = Vector2.ZERO
+	drag_start = Vector2.ZERO
+	has_launched = false
+	hot_time = 0.0
+	energy_limit = level[&quot;energy&quot;]
+	energy = energy_limit
+	run_active = true
+	resume_screen = &quot;play&quot;
+	$EnergyLabel.text = &quot;Energy: %.1f / %d&quot; % [energy, int(energy_limit)]
+	$EnergyBar.max_value = energy_limit
+	$EnergyBar.value = energy
+	$PlanetsLabel.text = &quot;Planets: 0 / %d&quot; % planets.size()
+	$LevelLabel.text = &quot;Level %d / %d  ·  %s&quot; % [index + 1, LEVELS.size(), level[&quot;name&quot;]]
+	show_screen(&quot;play&quot;)
+
+func continue_run() -&gt; void:
+	show_screen(resume_screen)
+
+func result_action() -&gt; void:
+	if screen == &quot;cleared&quot;:
+		load_level(level_index + 1)
+	elif screen == &quot;lost&quot;:
+		load_level(level_index)
+	elif screen == &quot;won&quot;:
+		start_run()
+
+func show_screen(next_screen: String) -&gt; void:
+	if next_screen == &quot;menu&quot; and screen in [&quot;play&quot;, &quot;cleared&quot;]:
+		resume_screen = screen
+	is_aiming = false
+	screen = next_screen
+	$Music.stream_paused = screen == &quot;intro&quot;
+	if screen != &quot;intro&quot; and not $Music.playing:
+		$Music.play()
+	var gameplay_visible: bool = screen in [&quot;play&quot;, &quot;cleared&quot;, &quot;lost&quot;, &quot;won&quot;]
+	for sprite in planet_sprites:
+		sprite.hide()
+	for planet in planets:
+		planet[&quot;node&quot;].visible = gameplay_visible
+	$LevelLabel.visible = gameplay_visible
+	$EnergyLabel.visible = gameplay_visible
+	$EnergyBar.visible = gameplay_visible
+	$PlanetsLabel.visible = gameplay_visible
+	$Home.visible = screen == &quot;play&quot;
+	$Intro.visible = screen == &quot;intro&quot;
+	$Menu.visible = screen == &quot;menu&quot;
+	$Tutorial.visible = screen == &quot;tutorial&quot;
+	$ResultShade.visible = screen in [&quot;cleared&quot;, &quot;lost&quot;, &quot;won&quot;]
+	$GameOverPanel.visible = screen in [&quot;cleared&quot;, &quot;lost&quot;, &quot;won&quot;]
+	$Menu/Play.visible = not run_active
+	$Menu/Continue.visible = run_active
+	if screen != &quot;intro&quot;:
+		$Intro/AnimationPlayer.stop()
+		$IntroSound.stop()
+	if screen == &quot;menu&quot;:
+		$Menu/AnimationPlayer.play(&quot;MenuFloat&quot;)
+		if run_active:
+			$Menu/Continue.grab_focus()
+		else:
+			$Menu/Play.grab_focus()
+	else:
+		$Menu/AnimationPlayer.pause()
+	if screen in [&quot;cleared&quot;, &quot;lost&quot;, &quot;won&quot;]:
+		$GameOverPanel/Retry.grab_focus()
+	elif screen == &quot;tutorial&quot;:
+		$Tutorial/Back.grab_focus()
+	queue_redraw()
+
+func show_result(won: bool) -&gt; void:
+	if won:
+		$ClearSound.play()
+	else:
+		$LoseSound.play()
+	var more_levels: bool = won and level_index + 1 &lt; LEVELS.size()
+	run_active = more_levels
+	$GameOverPanel/Title.text = &quot;Level complete!&quot; if more_levels else (&quot;All planets lit!&quot; if won else &quot;Out of energy&quot;)
+	$GameOverPanel/Message.text = &quot;Ready for Level %d?&quot; % (level_index + 2) if more_levels else (&quot;You completed all three levels.&quot; if won else &quot;Try this level again with fresh energy.&quot;)
+	$GameOverPanel/Retry.text = &quot;Next Level&quot; if more_levels else (&quot;Play Again&quot; if won else &quot;Retry Level&quot;)
+	GameView.configure_result(self, won)
+	show_screen(&quot;cleared&quot; if more_levels else (&quot;won&quot; if won else &quot;lost&quot;))
+func _on_intro_finished(animation_name: StringName) -&gt; void:
+	if animation_name == &amp;&quot;Intro&quot; and screen == &quot;intro&quot;:
+		show_screen(&quot;menu&quot;)
+
+func _notification(what: int) -&gt; void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		is_aiming = false
+</code></pre></details><details><summary>game_view.gd — drawing code</summary><pre><code>extends RefCounted
+
+const BODY_FONT: Font = preload(&quot;res://assets/fonts/Rajdhani-SemiBold.ttf&quot;)
+const HEADING_FONT: Font = preload(&quot;res://assets/fonts/Rajdhani-Bold.ttf&quot;)
+
+static func configure_result(game: Node2D, won: bool) -&gt; void:
+	var panel: Panel = game.get_node(&quot;GameOverPanel&quot;)
+	panel.position = Vector2.ZERO
+	panel.size = Vector2(1920, 1080)
+	panel.get_node(&quot;DefeatArt&quot;).hide()
+	panel.get_node(&quot;Details&quot;).visible = not won
+	panel.get_node(&quot;Details&quot;).position = Vector2(300, 750)
+	panel.get_node(&quot;Details&quot;).size = Vector2(1320, 85)
+	var background := StyleBoxFlat.new()
+	background.bg_color = Color(0.025, 0.025, 0.07)
+	panel.add_theme_stylebox_override(&quot;panel&quot;, background)
+	var animation: AnimatedSprite2D = panel.get_node(&quot;ResultAnimation&quot;)
+	animation.stop()
+	animation.play(&quot;victory&quot; if won else &quot;defeat&quot;)
+	var layouts: Array[Rect2] = [Rect2(260, 90, 1400, 140), Rect2(300, 660, 1320, 90), Rect2(510, 900, 420, 110), Rect2(990, 900, 420, 110)]
+	var names: Array[String] = [&quot;Title&quot;, &quot;Message&quot;, &quot;Retry&quot;, &quot;Home&quot;]
+	for i in range(names.size()):
+		var control: Control = panel.get_node(names[i])
+		control.position = layouts[i].position
+		control.size = layouts[i].size
+	for label: Label in [panel.get_node(&quot;Title&quot;), panel.get_node(&quot;Message&quot;), panel.get_node(&quot;Details&quot;)]:
+		label.add_theme_constant_override(&quot;outline_size&quot;, 8)
+		label.add_theme_color_override(&quot;font_outline_color&quot;, Color(&quot;091020&quot;))
+	panel.get_node(&quot;Title&quot;).add_theme_font_size_override(&quot;font_size&quot;, 90)
+	if not won:
+		panel.get_node(&quot;Title&quot;).text = &quot;GAME OVER&quot;
+		panel.get_node(&quot;Message&quot;).text = &quot;Out of energy. Retry this level with a fresh energy pool.&quot;
+		var count: int = game.planets.filter(func(planet: Dictionary) -&gt; bool: return planet[&quot;lit&quot;]).size()
+		panel.get_node(&quot;Details&quot;).text = &quot;Level %d / %d · %s · %d / %d planets relit&quot; % [game.level_index + 1, game.LEVELS.size(), game.LEVELS[game.level_index][&quot;name&quot;], count, game.planets.size()]
+
+const LESSONS: Array[String] = [&quot;One last spark.&quot;, &quot;Pull left. Fly right.&quot;, &quot;Hit a planet before the ring runs out.&quot;, &quot;Spend energy. Earn it back with hits.&quot;]
+
+static func setup_tutorial(game: Node2D) -&gt; void:
+	var canvas: Control = game.get_node(&quot;Tutorial&quot;)
+	canvas.set_meta(&quot;page&quot;, 0)
+	canvas.set_meta(&quot;time&quot;, 0.0)
+	canvas.draw.connect(draw_tutorial.bind(canvas, game))
+	canvas.get_node(&quot;Back&quot;).pressed.connect(turn_page.bind(game, -1))
+	canvas.get_node(&quot;Next&quot;).pressed.connect(turn_page.bind(game, 1))
+	canvas.get_node(&quot;Home&quot;).pressed.connect(game.show_screen.bind(&quot;menu&quot;))
+	var animation: Tween = game.create_tween().set_loops()
+	animation.tween_method(func(time: float) -&gt; void: canvas.set_meta(&quot;time&quot;, time); canvas.queue_redraw(), 0.0, 5.0, 5.0)
+	canvas.set_meta(&quot;animation&quot;, animation)
+	animation.pause()
+	canvas.visibility_changed.connect(func() -&gt; void: animation.play() if canvas.visible else animation.pause())
+
+static func open_tutorial(game: Node2D) -&gt; void:
+	game.get_node(&quot;Tutorial&quot;).set_meta(&quot;page&quot;, 0)
+	game.get_node(&quot;Tutorial&quot;).set_meta(&quot;time&quot;, 0.0)
+	game.get_node(&quot;Tutorial/Next&quot;).text = &quot;Next&quot;
+	game.show_screen(&quot;tutorial&quot;)
+	game.get_node(&quot;Tutorial&quot;).get_meta(&quot;animation&quot;).stop()
+	game.get_node(&quot;Tutorial&quot;).get_meta(&quot;animation&quot;).play()
+
+static func turn_page(game: Node2D, direction: int) -&gt; void:
+	var canvas: Control = game.get_node(&quot;Tutorial&quot;)
+	var page: int = canvas.get_meta(&quot;page&quot;) + direction
+	if page &lt; 0:
+		game.show_screen(&quot;menu&quot;)
+	elif page &gt; 3:
+		game.continue_run() if game.run_active else game.start_run()
+	else:
+		canvas.get_meta(&quot;animation&quot;).stop()
+		canvas.get_meta(&quot;animation&quot;).play()
+		canvas.set_meta(&quot;page&quot;, page)
+		canvas.set_meta(&quot;time&quot;, 0.0)
+		canvas.get_node(&quot;Next&quot;).text = &quot;Next&quot; if page &lt; 3 else (&quot;Continue&quot; if game.run_active else &quot;Play&quot;)
+		canvas.queue_redraw()
+
+static func lesson_text(canvas: Control, y: float, text: String, size: int = 16, color: Color = Color(&quot;eee6fc&quot;)) -&gt; void:
+	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	canvas.draw_string(HEADING_FONT if size &gt;= 21 else BODY_FONT, Vector2(0, y * 2.4), text, HORIZONTAL_ALIGNMENT_CENTER, 1920, int(size * 2.4), color)
+	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * 2.4)
+
+static func lesson_planet(canvas: Control, game: Node2D, at: Vector2, radius: float, lit: bool) -&gt; void:
+	var tint := Color.WHITE if lit else Color(0.25, 0.25, 0.25)
+	if lit:
+		canvas.draw_circle(at, radius + 7, Color(0.4, 0.9, 0.85, 0.15))
+	canvas.draw_texture_rect(game.get_node(&quot;Planet&quot;).texture, Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2), false, tint)
+
+static func lesson_comet(canvas: Control, at: Vector2, hot: float) -&gt; void:
+	for i in range(8):
+		canvas.draw_circle(at - Vector2(i * 5, 0), 7.0 - i * 0.65, Color(1.0, 0.72, 0.42, 0.5 - i * 0.055))
+	canvas.draw_circle(at, 7, Color(&quot;fff3c4&quot;))
+	if hot &gt; 0:
+		canvas.draw_arc(at, 17, -PI / 2, -PI / 2 + hot * TAU, 48, Color(&quot;ffcf72&quot;), 2, true)
+
+static func draw_tutorial(canvas: Control, game: Node2D) -&gt; void:
+	var page: int = canvas.get_meta(&quot;page&quot;, 0)
+	var time: float = canvas.get_meta(&quot;time&quot;, 0.0)
+	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * 2.4)
+	canvas.draw_rect(Rect2(0, 0, 800, 450), Color(0.02, 0.03, 0.08, 0.65))
+	lesson_text(canvas, 51, &quot;HOW TO PLAY   %d / 4&quot; % (page + 1), 11, Color(&quot;bcacd8&quot;))
+	lesson_text(canvas, 90, LESSONS[page], 23)
+	if page == 0:
+		lesson_planet(canvas, game, Vector2(260, 175), 31, false)
+		lesson_comet(canvas, Vector2(400, 175), 1.0)
+		lesson_planet(canvas, game, Vector2(540, 175), 31, true)
+		for x in [330, 470]:
+			canvas.draw_line(Vector2(x - 12, 175), Vector2(x + 12, 175), Color(&quot;68e6db&quot;), 2)
+			canvas.draw_line(Vector2(x + 5, 168), Vector2(x + 12, 175), Color(&quot;68e6db&quot;), 2)
+			canvas.draw_line(Vector2(x + 5, 182), Vector2(x + 12, 175), Color(&quot;68e6db&quot;), 2)
+		lesson_text(canvas, 250, &quot;A star collapsed, and its planets went dark.&quot;, 15)
+		lesson_text(canvas, 275, &quot;You&#x27;re its last spark.&quot;, 15)
+		lesson_text(canvas, 300, &quot;Relight them all to bring the star back.&quot;, 15)
+	elif page == 1:
+		var pull: float = minf(time / 2.0, 1.0)
+		var travel: float = clampf((time - 2.0) / 2.0, 0.0, 1.0)
+		for i in range(15):
+			var progress: float = i / 14.0
+			canvas.draw_circle(Vector2(340 + progress * 240, 185 - sin(progress * PI) * 32), 2, Color(&quot;68e6db&quot;))
+		lesson_comet(canvas, Vector2(340 + travel * 240, 185 - sin(travel * PI) * 32), 1.0 - travel * 0.6)
+		var mouse := Vector2(340 - pull * 120, 240)
+		var shape := StyleBoxFlat.new()
+		shape.bg_color = Color(&quot;f58ac5&quot;) if time &lt; 2.0 else Color(&quot;dad9f0&quot;)
+		shape.set_corner_radius_all(10)
+		canvas.draw_line(Vector2(340, 240), mouse, Color(&quot;f58ac5&quot;), 2, true)
+		canvas.draw_style_box(shape, Rect2(mouse - Vector2(12, 18), Vector2(24, 36)))
+		canvas.draw_line(mouse + Vector2(0, -17), mouse, Color(&quot;081327&quot;), 2)
+		lesson_text(canvas, 294, &quot;1  Hold + drag left&quot; if time &lt; 2.0 else &quot;2  Release → comet flies right&quot;, 16, Color(&quot;f5b5db&quot;))
+		lesson_text(canvas, 316, &quot;You can launch again while moving.&quot;, 11)
+	elif page == 2:
+		var progress: float = clampf(time / 2.0, 0.0, 1.0)
+		lesson_planet(canvas, game, Vector2(490, 190), 34, time &gt;= 2.0)
+		lesson_comet(canvas, Vector2(240 + progress * 209 - maxf(0, time - 2) * 35, 190 - maxf(0, time - 2) * 20), maxf(0, 1.0 - time / 3.0))
+		lesson_text(canvas, 261, &quot;HOT  %.1fs&quot; % maxf(0, 3.0 - time) if time &lt; 3 else &quot;COOL · launch again to relight&quot;, 15, Color(&quot;ffcf72&quot;))
+		lesson_text(canvas, 300, &quot;Hot hit → planet lights up&quot; if time &gt;= 2 else &quot;Reach the planet while the ring is glowing&quot;, 14, Color(&quot;68e6db&quot;))
+	else:
+		var values: Array[int] = [100, 70, 85, 100]
+		var labels: Array[String] = [&quot;Start&quot;, &quot;Full shot −30&quot;, &quot;New hit +15&quot;, &quot;New hit +15&quot;]
+		for i in range(4):
+			var x: float = 145.0 + i * 165
+			var active: bool = i &lt;= mini(int(time / 1.25), 3)
+			canvas.draw_rect(Rect2(x - 44, 235, 88, 7), Color(1, 1, 1, 0.12))
+			canvas.draw_rect(Rect2(x - 44, 235, 88 * values[i] / 100.0, 7), Color(0.4, 0.9, 0.85, 1.0 if active else 0.2))
+			if i &gt;= 2:
+				lesson_planet(canvas, game, Vector2(x, 190), 24, active)
+			else:
+				lesson_comet(canvas, Vector2(x, 190), 1.0)
+			canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			canvas.draw_string(BODY_FONT, Vector2((x - 73) * 2.4, 146 * 2.4), labels[i], HORIZONTAL_ALIGNMENT_CENTER, 146 * 2.4, 28, Color(&quot;68e6db&quot;))
+			canvas.draw_string(BODY_FONT, Vector2((x - 65) * 2.4, 269 * 2.4), str(values[i]), HORIZONTAL_ALIGNMENT_CENTER, 130 * 2.4, 50, Color(&quot;eee6fc&quot;))
+			canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * 2.4)
+		lesson_text(canvas, 305, &quot;Waiting gives no energy. Refunds stop at the level&#x27;s maximum.&quot;, 12)
+	lesson_text(canvas, 407, &quot;R  retry level       Esc  menu&quot;, 11, Color(&quot;b1b2cd&quot;))
+	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+static func draw_game(game: Node2D) -&gt; void:
+	if game.screen not in [&quot;play&quot;, &quot;cleared&quot;, &quot;lost&quot;, &quot;won&quot;]:
+		return
+	for x in range(0, 1921, 96):
+		var points := PackedVector2Array()
+		for y in range(0, 1081, 24):
+			points.append(game.warp_point(Vector2(x, y)))
+		game.draw_polyline(points, Color(0.63, 0.47, 1.0, 0.18), 1.0, true)
+
+	for y in range(0, 1081, 96):
+		var points := PackedVector2Array()
+		for x in range(0, 1921, 24):
+			points.append(game.warp_point(Vector2(x, y)))
+		game.draw_polyline(points, Color(0.63, 0.47, 1.0, 0.18), 1.0, true)
+
+	game.draw_circle(game.hole_position, 54.0, Color(0.6, 0.3, 0.9))
+	game.draw_circle(game.hole_position, 46.0, Color.BLACK)
+	game.draw_circle(game.comet_position, 20.0, Color.WHITE)
+	if game.hot_time &gt; 0.0:
+		var heat_fraction: float = game.hot_time / 3.0
+		var start_angle: float = -PI / 2.0
+		var end_angle: float = start_angle + TAU * heat_fraction
+		game.draw_arc(game.comet_position, 30.0, start_angle, end_angle, 64, Color(1.0, 0.8, 0.3), 3.0, true)
+	if game.is_aiming:
+		var mouse_position: Vector2 = game.get_local_mouse_position()
+		var launch_velocity: Vector2 = ((game.drag_start - mouse_position) * 4.0).limit_length(630.0)
+		var predicted_points: PackedVector2Array = game.preview_path(launch_velocity)
+
+		for dot_position in predicted_points:
+			game.draw_circle(dot_position, 3.0, Color(1.0, 1.0, 1.0, 0.6))
+
+</code></pre></details></section><section><h2>11. Sound effects</h2><p>The scene now has four AudioStreamPlayer nodes directly under Game: LaunchSound, RelightSound, ClearSound and LoseSound. Each has a stream from <a href="../assets/audio/SOURCE.txt">assets/audio</a>, volume 0 dB and autoplay off. These reuse the original game's project-generated sounds; no downloaded audio or music was added.</p><pre><code>$LaunchSound.play()</code></pre><p>The dollar sign finds the node named LaunchSound under Game. The dot accesses its function. play() starts its assigned audio stream. This line runs only after the drag passes the minimum size and energy checks.</p><pre><code>$RelightSound.play()</code></pre><p>This runs when a hot comet lights a previously dark planet. It is outside move_comet(), so the dotted preview cannot trigger it. An already-lit planet skips this code.</p><pre><code>if won:
+    $ClearSound.play()
+else:
+    $LoseSound.play()</code></pre><p>show_result() plays the clear chord for either a level clear or final victory. Otherwise it reuses the original falling swallow tone for Out of energy. The learning game still does not swallow the comet.</p><pre><code>for player: AudioStreamPlayer in [$LaunchSound, $RelightSound, $ClearSound, $LoseSound]:
+    player.stop()</code></pre><p>load_level() stops all previous effects before a retry or new stage. The scene allows overlapping voices so quick shots or nearby relights do not unnecessarily cut each other off.</p><p><strong>Try:</strong> F5 → Play → shoot → hit a dark planet. Clear a stage to hear the chord, or spend energy and wait for the ring to expire to hear the falling tone. Automated tests check stream loading and triggers; only your listening check can confirm volume and taste on your speakers.</p></section><section><h2>12. Louder audio, extra effects and intro</h2><p>Chris could not hear the first version. Players now use 0 dB instead of -6 dB: about twice the signal amplitude, without changing the original recordings. Extra BounceSound, CoolSound and ClickSound nodes play on real planet contact, when heat expires, and on UI buttons. A 0.15-second bounce cooldown avoids a sound every physics frame. These triggers live outside preview simulation.</p><p>IntroSound plays an original 7.2-second ascending tone sequence and chord over Orbit Studios. Leaving or skipping the intro stops it. The generator is <a href="../tools/generate_extra_audio.py">tools/generate_extra_audio.py</a>; these are original synthesized tones, not a recording of Yanni.</p><p>The Music node uses the supplied Felitsa.mp3 at 0 dB with automatic ducking. It begins after the intro and loops continuously across menus, gameplay and results. The source file was copied unchanged.</p><p>The standalone audio_output_test.gd ran with Windows WASAPI, master mute false, and measured nonzero intro output at the master mixer (peak 0.170). Cooling, bounce, click and intro-stop checks passed. If still silent, check the Godot embedded player's speaker/mute icon and Windows Volume Mixer/output device. Actual listening confirmation is pending.</p></section><section><h2>13. Felitsa background music</h2><p>In the Scene panel, select <strong>Game → Music</strong>. Its Stream is the supplied Felitsa.mp3. Volume dB is 0. The Music bus automatically lowers it while effects sound.</p><pre><code>$Music.stream.loop = true</code></pre><p>In _ready(), this tells the MP3 stream to repeat when it reaches the end.</p><pre><code>$Music.stream_paused = screen == "intro"
+if screen != "intro" and not $Music.playing:
+    $Music.play()</code></pre><p>In show_screen(), the first line keeps the song silent during the studio intro. The next two lines start music after leaving it, but only if it is not already playing. That avoids restarting the song when you press Home, Continue, Retry or Next Level.</p><p>Verified with the Windows WASAPI mixer: nonzero track output, continuity through navigation, and looping by seeking near the track's end and allowing it to wrap. This does not substitute for your volume/listening check.</p></section><section><h2>14. Loud music that makes room for effects</h2><p>Open Godot's <strong>Audio</strong> panel at the bottom. The saved <a href="../default_bus_layout.tres">default_bus_layout.tres</a> defines Master, Music and Effects buses. A bus is a mixer channel. Every effect player sends to Effects; the song sends to Music; both reach Master.</p><p>Music has an AudioEffectCompressor whose sidechain is Effects. That means it listens to effect audio and turns the music down while effects are present. The song stays at 0 dB otherwise. Attack is 2000 microseconds (2 ms), release is 350 ms, threshold is -30 dB and ratio is 8. No additional gameplay code or timer is needed; overlapping effects also trigger it.</p><p>Source for this technique: <a href="https://docs.godotengine.org/en/stable/classes/class_audioeffectcompressor.html">Godot AudioEffectCompressor documentation</a>.</p><p>The standalone music_duck_test.gd measured a steady test signal on the actual Music bus: RMS 0.1769 normally, 0.0093 during a clear effect, and 0.1754 after recovery. The test signal is only in the test; the game still plays Felitsa.</p></section><section><h2>15. Tutorial matching the original game</h2><p>F5 → Tutorial now opens four pages: the short story, animated mouse drag and launch, hot-ring relighting, then energy spending/refunds. The layout and demonstrations follow the original SolarLeap tutorial. Back moves one page (or returns to the menu from page one); Next advances. Home always opens the menu. On page four, Play begins a new campaign or Continue resumes the paused run.</p><p>The main script calls GameView.setup_tutorial(self) once in _ready(). The existing drawing/UI helper connects the three buttons, stores the page and animation time on the Tutorial Control with set_meta(), and creates a looping five-second Tween. A Tween changes a value gradually; here it advances the demonstration time and requests queue_redraw(). It pauses while Tutorial is hidden. Changing pages restarts the demonstration.</p><p>draw_tutorial() draws the illustration for the selected page. lesson_planet() uses the existing Earth texture; lesson_comet() draws the illustrative spark and hot ring. These pictures never move the real comet, spend real energy, or light the real planets. Text is drawn at the native resolution for readable labels.</p><p>The energy demonstration uses 100 → 70 → 85 → 100. Every new hit refunds 15 in this learning version; it does not claim the original game's extra chain bonus. Music continues through the tutorial and button effects still lower it briefly.</p><img src="images/tutorial-1.png" alt="Tutorial page 1"><img src="images/tutorial-2.png" alt="Tutorial page 2"><img src="images/tutorial-3.png" alt="Tutorial page 3"><img src="images/tutorial-4.png" alt="Tutorial page 4"><p>Extended smoke checks pass for all pages, Home, Back, final Play/Continue, animation progression and preservation of live gameplay. Four rendered pages were inspected. Human F5 appearance confirmation is pending.</p></section><section><h2>16. Changing and trimming the music</h2><p>The active Music node now uses <a href="../assets/audio/Acropolis-game.ogg">Acropolis-game.ogg</a>. This is an edited copy of the corrected user-supplied Acropolis live recording. The source MP3 remains unchanged; the earlier wrong Acroyali recording and Felitsa are not connected to Music.</p><p>The first 118 seconds are removed. The next five seconds fade from silence to the recording's original level. A six-second fade-out softens the end before the loop restarts. The edit lasts about 6 minutes 36 seconds. There is no extra volume normalization: the Music player remains at 0 dB and the existing Effects sidechain still lowers it during sound effects.</p><p>The exact source hash, cut point, fades and FFmpeg filter are recorded in <a href="../assets/audio/Acropolis-edit.json">Acropolis-edit.json</a>. The tool was already installed with CapCut; no dependency was installed. This only changes the audio asset and its scene reference, not gameplay code.</p><p>The 1:58 choice follows the requested start around/before 2:00 and the quieter passage measured around that point. Listening confirmation is still needed to judge whether this is the musical introduction Chris intended.</p></section><section><h2>17. Less volume and a new font</h2><p>The latest Music player volume is <strong>-3 dB</strong>, a modest reduction from 0 dB. Automatic effects ducking stays on. This supersedes the earlier 0 dB music setting.</p><p>The game now bundles Rajdhani SemiBold for text and Bold for headings/buttons. Source: <a href="https://github.com/google/fonts/tree/main/ofl/rajdhani">Google Fonts Rajdhani</a>. Its <a href="../assets/fonts/OFL.txt">Open Font License</a> ships with the game. The fonts do not need to be installed on your computer.</p><p>project.godot uses theme/custom_font for labels such as Energy and the level counter. The scene UITheme assigns the bundled fonts to controls and buttons. game_view.gd preloads BODY_FONT and HEADING_FONT for tutorial drawing. No physics code changes. The friend's logo and text already painted into button images retain their artwork.</p><p>Reopen the project and press F5. Check Tutorial, Play and the result panels for the new typeface. The current screenshots above show the new font. Visual inspection and smoke tests passed; human appearance/volume confirmation is pending.</p></section><section><h2>18. Full-screen Game Over</h2><img src="images/05-out-of-energy.png" alt="Full-screen Game Over with defeat artwork, level progress and Retry Level/Home"><p>The loss rule remains the same: when the comet is cold and energy is below the cheapest valid shot, show_result(false) runs. GameView.configure_result(self, won) now arranges the shared result panel before it appears.</p><p>For a loss, it makes the panel 1920×1080, adds a dark backdrop, shows the friend's existing defeat image and the GAME OVER heading, and counts lit planets for the level summary. Retry Level reloads the current level with fresh energy; Home returns to the menu. For a clear/win, the helper restores the previous compact panel size and hides the defeat-only elements.</p><p>The four Rect2 values describe the title, message, Retry and Home rectangles. Each rectangle stores x, y, width and height. The loop applies each rectangle's position and size to its Control node. This is UI layout only; it does not change physics, energy costs or failure rules.</p><p>To see it, start Level 1 and fire three full-power shots without lighting anything, then wait for the hot ring to expire. Automated checks passed for the full-screen loss, defeat art, actual Retry click and later victory layout. Chris confirmed the Game Over appearance and Retry/Home check and requested saving it.</p></section><section><h2>19. Updated Orbit Studios, menu and result animations</h2><p>The friend's updated PNGs are stored unchanged in <a href="../assets/friend-menu-v2/SOURCE.txt">assets/friend-menu-v2</a>. The archive remains untouched. The intro uses the new studio credit with the same ten-second fade and intro music. The home screen uses the updated logo, Play/Tutorial/Quit lettering and Earth/Mars/Uranus placement.</p><img src="images/01-intro.png" alt="New Orbit Studios intro"><img src="images/02-menu.png" alt="Updated home screen with blue logo and menu lettering"><p>In Godot, select Menu → AnimationPlayer → MenuFloat. Seven tracks animate the logo's position and each planet's position/rotation. A six-second loop drifts planets by 6–12 pixels and rocks them about 1–2 degrees. The pivot sits at each image's centre. These are menu images, not gameplay planets; physics is unchanged.</p><p>GameOverPanel → ResultAnimation is an AnimatedSprite2D. Its <a href="../assets/result-animation/frames.tres">SpriteFrames resource</a> contains victory and defeat animations made from the supplied GIF frames with their original timing. Only the white borders were cropped; the central 800×450 image is displayed at 2.4× for 1920×1080.</p><p>The supplied VICTORY.gif contains a defeat sequence after its victory portion. Victory playback therefore uses frames 0–30 only; defeat uses all 16 frames from DEFEAT.gif. The original GIF files are preserved. <a href="../assets/result-animation/SOURCE.json">The frame manifest</a> records source hashes, crop and timing.</p><p>configure_result() selects victory for a level/final clear and defeat for a loss, restarts the animation, then positions the real buttons below its banner. Text uses outlines to remain readable on the moving space background. Retry/Next Level/Play Again/Home keep their existing behavior.</p><img src="images/05-out-of-energy.png" alt="Animated defeat screen with readable text and retry buttons"><img src="images/06-win.png" alt="Animated victory screen with Play Again and Home"><p>Import, smoke and rendered capture checks passed. Smoke checks all three planets' motion, menu Play, GIF frame counts/timing, real-time defeat frame advancement and correct animation selection. All eight menu PNGs were compared byte-for-byte with the ZIP. Your F5 visual/play check remains pending before commit.</p></section><section><h2>20. Higher menu and mandatory intro</h2><p>The logo moved up 100 pixels and menu buttons moved up 150 pixels. Continue is now a TextureButton using your supplied image, with its original file preserved. A small canvas shader hides the white background when drawing it. The other text buttons use Americorps; the font license is included in assets/fonts/americorps.txt.</p><p>The Intro/Skip node and its signal were removed. At the start of _unhandled_input(), the game returns immediately while screen is intro, so Escape cannot skip it. Animation completion still opens the menu after ten seconds.</p><p>Smoke and rendered screen checks passed on Godot 4.7.2. Visual approval is pending before commit.</p><img src="images/02-continue.png" alt="Higher menu with supplied Continue image"></section></main></html>
